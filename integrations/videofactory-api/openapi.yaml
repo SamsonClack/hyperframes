@@ -1,0 +1,228 @@
+openapi: 3.1.0
+info:
+  title: VideoFactory HyperFrames API
+  version: 1.0.0
+  description: HTTP wrapper around the built-in HyperFrames Producer render API.
+servers:
+  - url: http://127.0.0.1:9847
+    description: Local workstation default
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Check API health
+      security: []
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                  uptime:
+                    type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+  /render:
+    post:
+      operationId: renderVideo
+      summary: Render a HyperFrames project to video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenderRequest"
+      responses:
+        "200":
+          description: Render completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderSuccess"
+        "400":
+          description: Invalid render request
+        "500":
+          description: Render failed
+  /render/stream:
+    post:
+      operationId: renderVideoStream
+      summary: Render a video and stream progress using Server-Sent Events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenderRequest"
+      responses:
+        "200":
+          description: SSE progress events ending in complete or error
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /render/queue:
+    get:
+      operationId: getRenderQueue
+      summary: Get current render queue status
+      responses:
+        "200":
+          description: Current queue status
+          content:
+            application/json:
+              schema:
+                type: object
+  /lint:
+    post:
+      operationId: lintHyperFramesProject
+      summary: Run HyperFrames lint against a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LintRequest"
+      responses:
+        "200":
+          description: Lint result
+          content:
+            application/json:
+              schema:
+                type: object
+  /outputs/{token}:
+    get:
+      operationId: downloadRenderedVideo
+      summary: Download a rendered video using its short-lived output token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rendered file
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+  schemas:
+    RenderRequest:
+      type: object
+      description: Provide one render source. projectDir is relative to the configured project root.
+      anyOf:
+        - required: [projectDir]
+        - required: [html]
+        - required: [previewUrl]
+      properties:
+        projectDir:
+          type: string
+          description: Project folder under PRODUCER_PROJECTS_DIR.
+        entryFile:
+          type: string
+          default: index.html
+        html:
+          type: string
+          description: Inline HTML composition (temporary project).
+        previewUrl:
+          type: string
+          format: uri
+          description: Public HTTPS URL returning the composition HTML.
+        fps:
+          oneOf:
+            - type: number
+            - type: string
+          default: 30
+        quality:
+          type: string
+          enum: [draft, standard, high]
+          default: high
+        format:
+          type: string
+          enum: [mp4, webm, mov]
+          default: mp4
+        outputPath:
+          type: string
+          description: Optional output path; keep it inside the configured renders directory.
+        outputResolution:
+          type: string
+          description: HyperFrames output resolution preset, e.g. portrait, landscape, 4k.
+        variables:
+          type: object
+          additionalProperties: true
+        strictVariables:
+          type: boolean
+        outputDynamicRange:
+          type: string
+          enum: [auto, hdr, sdr]
+        gpu:
+          type: boolean
+        workers:
+          type: integer
+          minimum: 1
+        maxRenderMs:
+          type: integer
+          minimum: 0
+    LintRequest:
+      type: object
+      anyOf:
+        - required: [projectDir]
+        - required: [html]
+        - required: [previewUrl]
+      properties:
+        projectDir:
+          type: string
+        entryFile:
+          type: string
+        html:
+          type: string
+        previewUrl:
+          type: string
+          format: uri
+    RenderSuccess:
+      type: object
+      required: [success, requestId, outputToken, outputUrl, fileSize, durationMs]
+      properties:
+        success:
+          type: boolean
+          const: true
+        requestId:
+          type: string
+        outputPath:
+          type: string
+        outputToken:
+          type: string
+        outputUrl:
+          type: string
+        fileSize:
+          type: integer
+        durationMs:
+          type: integer
+        videoDurationSeconds:
+          type: number
+        outcome:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: object
+        perf:
+          type: object
